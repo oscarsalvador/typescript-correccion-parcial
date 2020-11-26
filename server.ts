@@ -1,23 +1,50 @@
-import { Application } from "https://deno.land/x/oak@v6.3.2/mod.ts"
+import {Application} from "https://deno.land/x/oak@v6.3.2/mod.ts"
 import "https://deno.land/x/dotenv/load.ts" //para cargar .env
 
-//archivos propios
+import {MongoClient} from "https://deno.land/x/mongo@v0.13.0/mod.ts"
+
 import router from "./routes.ts"
 
 
+declare global {
+    var statusval: number;
+    var statusmsg: string;
+    interface Window {
+        statusval: number;
+        statusmsg: string;
+    }
+}
 
-//lanzar el servidor
-const app: Application = new Application()
+try {
+    window.statusval = 200;
+    window.statusmsg = "OK";
 
-//pasar base de datos al contexto
-app.use(async (ctx, next) => {
-    await next()
-})
+    const DB_URL = Deno.env.get("DB_URL");
+    const DB_NAME = Deno.env.get("DB_NAME");
+    if (!DB_URL || !DB_NAME) throw Error("Fallo en carga del .env");
 
-app.use(router.routes())
-app.use(router.allowedMethods())
+    //conexion a MongoDB
+    const client = new MongoClient();
+    client.connectWithUri(DB_URL);
+    const db = client.database(DB_NAME);
 
-//esperar escuchando en el puerto
-const PORT: number = Number(Deno.env.get("PORT")) || 8000
-console.log(`Listening on port ${PORT}`)
-await app.listen({port:PORT})
+    //lanzar el servidor
+    const app: Application = new Application();
+
+    app.use(async (ctx, next) => {
+        //para poder usar la base de datos en otros archivos pasarla al contexto
+        ctx.state.db = db;
+
+        await next();
+    });
+
+    app.use(router.routes());
+    app.use(router.allowedMethods());
+
+    //esperar escuchando en el puerto
+    const PORT: number = Number(Deno.env.get("PORT")) || 8000;
+    console.log(`Listening on port ${PORT}`);
+    await app.listen({ port: PORT });
+} catch (e) {
+    throw(e)
+}
